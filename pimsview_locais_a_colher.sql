@@ -104,7 +104,7 @@ SELECT
     va.de_varied                                         AS DSC_VARIEDADE,
     b.cd_estagio                                         AS COD_ESTAGIO,
     es.de_estagio                                        AS DSC_ESTAGIO,
-    ROUND(b.qt_idade / 30, 1)                            AS IDADE_CANA_MESES,
+    ROUND(NULLIF(b.qt_idade, 0) / 30, 1)                 AS IDADE_CANA_MESES,  -- idade 0 no PIMS = vazio
     b.distancia                                          AS DISTANCIA_KM,
     b.area_talhao                                        AS AREA_TALHAO,
     b.area_estimada                                      AS AREA_ESTIMADA,
