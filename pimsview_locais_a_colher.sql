@@ -2,7 +2,7 @@
    PIMS VIEW - LOCAIS A COLHER (base PRCL-077 + Muda)
    Arquivo em 2 partes:
      PARTE 1 - SELECTs de descoberta (rodar e me devolver o resultado)
-     PARTE 2 - Rascunho da view (ajusto nomes de tabela/coluna após a Parte 1)
+     PARTE 2 - SELECT final do PimsView (ajusto nomes de tabela/coluna após a Parte 1)
    Sintaxe: Oracle (padrão do PIMS CS). Se o banco for SQL Server, avise.
    ===================================================================== */
 
@@ -77,7 +77,7 @@ SELECT * FROM PIMS_CANA.UPNIVEL1   WHERE cd_upnivel1 = '462276';
 
 
 /* =====================================================================
-   PARTE 2 - RASCUNHO DA VIEW  (NÃO rodar ainda - nomes a confirmar)
+   PARTE 2 - SELECT LOCAIS A COLHER (somente SELECT, sem CREATE)
    Lógica (igual PRCL-077 + Muda):
      - Base: talhões com estimativa na safra (destino Safra OU Muda)
      - Área colhida: soma das OCs encerradas (total e parcial) na safra
@@ -85,8 +85,6 @@ SELECT * FROM PIMS_CANA.UPNIVEL1   WHERE cd_upnivel1 = '462276';
      - Ton estimada a colher = Área a colher * TCH estimado
    Itens marcados com  -- ???  dependem da Parte 1.
    ===================================================================== */
-/*
-CREATE OR REPLACE VIEW PIMS_CANA.V_PV_LOCAIS_A_COLHER AS
 WITH safra_atual AS (
     SELECT cd_safra, dt_inicio, dt_fim                       -- ???
       FROM PIMS_CANA.SAFRAS
@@ -152,4 +150,3 @@ LEFT JOIN colhido c   ON c.cd_safra    = e.cd_safra
                      AND c.cd_upnivel3 = e.cd_upnivel3
 WHERE e.rn = 1
   AND e.qt_area_prod - NVL(c.area_colhida,0) > 0;
-*/
