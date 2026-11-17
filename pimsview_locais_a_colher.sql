@@ -2,8 +2,9 @@
    PIMS VIEW - LOCAIS A COLHER  (réplica PRCL-077 + área de MUDA)
    Somente SELECT - owner PIMS_CANA - Oracle
    Traz a safra vigente e a seguinte (tombo / virada de safra): filtrar por COD_SAFRA.
+   Para comparar com o PRCL-077 filtrar por UNIDADE_INDUSTRIAL (uma instância pode ter mais de uma empresa).
 
-   Regras (validadas contra PRCL-077 Caarapó e Ivinhema):
+   Regras (validadas contra PRCL-077 Caarapó e Ivinhema - dif. < 0,01%):
      - Estimativa safra = HISTPREPRO CD_HIST 'O' (original) ou '1'..'9' (reestimativas), a mais recente
      - Estimativa muda  = HISTPREPRO CD_HIST 'S' (área e TCH da muda)
      - CD_HIST 'E'      = baixa gerada pela OC (não é estimativa)
@@ -160,4 +161,4 @@ LEFT JOIN PIMS_CANA.MODULOADM  ma ON TRIM(ma.cd_mod_adm) = TRIM(b.cd_mod_adm)
 LEFT JOIN PIMS_CANA.VARIEDADES va ON va.cd_varied   = b.cd_varied
 LEFT JOIN PIMS_CANA.ESTAGIOS   es ON es.cd_estagio  = b.cd_estagio
 WHERE b.saldo_safra > 0 OR b.saldo_muda > 0                              -- só locais com saldo a colher
-ORDER BY b.cd_safra, b.instancia, b.cd_upnivel1, b.cd_upnivel2, b.cd_upnivel3
+ORDER BY b.cd_safra, b.cd_unid_ind, b.cd_upnivel1, b.cd_upnivel2, b.cd_upnivel3
