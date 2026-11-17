@@ -1,49 +1,73 @@
 /* =====================================================================
-   OPERAÇÕES AGR - DESCOBERTA  (somente SELECT)
-   Objetivo: achar as tabelas de PLANEJAMENTO, PROGRAMAÇÃO e REALIZADO
-   (apontamento) das operações agrícolas, para fechar a view
-   pimsview_acompanhamento_operacoes.sql.
-   Me devolva o resultado das consultas A, B e C (D e E só se A/B acharem).
+   OPERAÇÕES AGR - DESCOBERTA COMPLETA  (um único SELECT)
+   Acha as tabelas de Planejamento / Programação / Apontamento / Cadastro
+   de operações e, para cada uma, já traz:
+     - todas as colunas
+     - qtd de linhas (estatística) e qtd da fazenda de teste / safra 2026
+     - AMOSTRA de 3 linhas (em XML) - da fazenda de teste quando houver
+   Ajuste a fazenda/safra de teste nos 2 parâmetros abaixo se quiser.
+   Exporte o resultado inteiro (Excel/CSV) e me mande.
    ===================================================================== */
-
--- A) Tabelas (qualquer owner) que têm código de operação + local (fazenda)
-SELECT c.owner, c.table_name,
-       LISTAGG(c.column_name, ', ') WITHIN GROUP (ORDER BY c.column_id) AS colunas_chave
-  FROM all_tab_columns c
- WHERE c.column_name IN ('CD_OPERACAO','CD_OPERAC','CD_OPER',
-                         'CD_UPNIVEL1','CD_UPNIVEL2','CD_UPNIVEL3',
-                         'CD_SAFRA','QT_AREA','QT_AREA_PROG','QT_AREA_PLAN','QT_AREA_APON',
-                         'DT_OPERACAO','DT_PROGRAMACAO','DT_APONTAMENTO','DT_PLANEJ')
- GROUP BY c.owner, c.table_name
-HAVING SUM(CASE WHEN c.column_name IN ('CD_OPERACAO','CD_OPERAC','CD_OPER') THEN 1 ELSE 0 END) > 0
-   AND SUM(CASE WHEN c.column_name = 'CD_UPNIVEL1' THEN 1 ELSE 0 END) > 0
- ORDER BY c.owner, c.table_name;
-
--- B) Tabelas pelo nome (planejamento / programação / apontamento / OS)
-SELECT owner, table_name, num_rows, last_analyzed
-  FROM all_tables
- WHERE owner LIKE 'PIMS%'
-   AND (   table_name LIKE '%PLAN%'  OR table_name LIKE '%PROG%'
-        OR table_name LIKE '%APT%'   OR table_name LIKE '%APON%'
-        OR table_name LIKE '%OPER%'  OR table_name LIKE '%ORDSERV%'
-        OR table_name LIKE 'OS%'     OR table_name LIKE '%BOLET%')
- ORDER BY owner, table_name;
-
--- C) Cadastro de operações (confirmar nome/colunas)
-SELECT owner, table_name, column_id, column_name, data_type, data_length
-  FROM all_tab_columns
- WHERE owner LIKE 'PIMS%'
-   AND table_name IN ('OPERACOES','OPERACAO','GRUPOOPER','GRUPO_OPER','UNIDADE','UNIDADES')
- ORDER BY owner, table_name, column_id;
-
--- D) Estrutura das tabelas achadas em A/B (trocar a lista pelas tabelas encontradas)
-SELECT owner, table_name, column_id, column_name, data_type, data_length
-  FROM all_tab_columns
- WHERE owner LIKE 'PIMS%'
-   AND table_name IN ('TABELA_PLANEJ','TABELA_PROG','TABELA_APONT')   -- <<< trocar
- ORDER BY owner, table_name, column_id;
-
--- E) Amostra de cada uma para a fazenda de teste (mesma do Locais a Colher)
--- SELECT * FROM PIMS_CANA.TABELA_PLANEJ WHERE cd_upnivel1 = '462276' AND ROWNUM <= 50;
--- SELECT * FROM PIMS_CANA.TABELA_PROG   WHERE cd_upnivel1 = '462276' AND ROWNUM <= 50;
--- SELECT * FROM PIMS_CANA.TABELA_APONT  WHERE cd_upnivel1 = '462276' AND ROWNUM <= 50;
+WITH
+par AS (SELECT '462276' AS faz, 2026 AS safra FROM dual),
+cols AS (
+    SELECT c.owner, c.table_name,
+           MAX(CASE WHEN c.column_name LIKE 'CD_OPER%'    THEN 1 ELSE 0 END) AS tem_oper,
+           MAX(CASE WHEN c.column_name =    'CD_UPNIVEL1' THEN 1 ELSE 0 END) AS tem_faz,
+           MAX(CASE WHEN c.column_name =    'CD_UPNIVEL2' THEN 1 ELSE 0 END) AS tem_gleba,
+           MAX(CASE WHEN c.column_name =    'CD_SAFRA'    THEN 1 ELSE 0 END) AS tem_safra,
+           MAX(CASE WHEN c.column_name LIKE 'QT_AREA%'    THEN 1 ELSE 0 END) AS tem_area,
+           MAX(CASE WHEN c.data_type IN ('LONG','LONG RAW','BLOB','BFILE') THEN 1 ELSE 0 END) AS tem_long,
+           LISTAGG(c.column_name, ', ') WITHIN GROUP (ORDER BY c.column_id)  AS colunas
+      FROM all_tab_columns c
+     WHERE c.owner LIKE 'PIMS%'
+     GROUP BY c.owner, c.table_name
+),
+cand AS (
+    SELECT t.owner, t.table_name, t.num_rows, t.last_analyzed, c.*,
+           CASE WHEN c.tem_oper = 1 AND c.tem_faz = 1 AND c.tem_area = 1 THEN 1   -- forte candidata
+                WHEN c.tem_oper = 1 AND c.tem_faz = 1                    THEN 2
+                WHEN t.table_name LIKE 'OPERAC%'                         THEN 3   -- cadastro
+                WHEN c.tem_oper = 1                                      THEN 4
+                ELSE 5 END AS prioridade
+      FROM all_tables t
+      JOIN cols c ON c.owner = t.owner AND c.table_name = t.table_name
+     WHERE c.tem_oper = 1
+        OR t.table_name LIKE '%PLAN%'  OR t.table_name LIKE '%PROG%'
+        OR t.table_name LIKE '%APT%'   OR t.table_name LIKE '%APON%'
+        OR t.table_name LIKE '%OPER%'  OR t.table_name LIKE '%ORDSERV%'
+        OR t.table_name LIKE 'OS%'     OR t.table_name LIKE '%BOLET%'
+),
+sqls AS (
+    SELECT k.*,
+           '"' || k.owner || '"."' || k.table_name || '"' AS tab,
+           CASE WHEN k.tem_faz = 1
+                THEN ' WHERE TRIM(CD_UPNIVEL1) = ''' || p.faz || '''' END AS filtro_faz,
+           CASE WHEN k.tem_safra = 1
+                THEN ' WHERE CD_SAFRA = ' || p.safra END                AS filtro_safra
+      FROM cand k CROSS JOIN par p
+)
+SELECT s.prioridade,
+       s.owner,
+       s.table_name,
+       s.num_rows                                        AS linhas_estatistica,
+       s.last_analyzed,
+       CASE WHEN s.tem_faz = 1 THEN
+            TO_NUMBER(EXTRACTVALUE(XMLTYPE(DBMS_XMLGEN.GETXML(
+               'SELECT COUNT(*) C FROM ' || s.tab || s.filtro_faz)), '/ROWSET/ROW/C')) END
+                                                         AS linhas_fazenda_teste,
+       CASE WHEN s.tem_safra = 1 THEN
+            TO_NUMBER(EXTRACTVALUE(XMLTYPE(DBMS_XMLGEN.GETXML(
+               'SELECT COUNT(*) C FROM ' || s.tab || s.filtro_safra)), '/ROWSET/ROW/C')) END
+                                                         AS linhas_safra_teste,
+       s.tem_oper, s.tem_faz, s.tem_gleba, s.tem_safra, s.tem_area,
+       s.colunas,
+       CASE WHEN s.tem_long = 0 THEN
+            DBMS_LOB.SUBSTR(DBMS_XMLGEN.GETXML(
+               'SELECT * FROM ' || s.tab ||
+               CASE WHEN s.filtro_faz IS NOT NULL THEN s.filtro_faz || ' AND ROWNUM <= 3'
+                    ELSE ' WHERE ROWNUM <= 3' END), 4000, 1)
+            ELSE '(tem coluna LONG/BLOB - sem amostra)' END
+                                                         AS amostra_xml
+  FROM sqls s
+ ORDER BY s.prioridade, s.owner, s.table_name
