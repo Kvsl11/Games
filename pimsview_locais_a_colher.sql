@@ -1,152 +1,163 @@
 /* =====================================================================
-   PIMS VIEW - LOCAIS A COLHER (base PRCL-077 + Muda)
-   Arquivo em 2 partes:
-     PARTE 1 - SELECTs de descoberta (rodar e me devolver o resultado)
-     PARTE 2 - SELECT final do PimsView (ajusto nomes de tabela/coluna após a Parte 1)
-   Sintaxe: Oracle (padrão do PIMS CS). Se o banco for SQL Server, avise.
+   PIMS VIEW - LOCAIS A COLHER  (réplica PRCL-077 + área de MUDA)
+   Somente SELECT - owner PIMS_CANA - Oracle
+
+   Regra (validada com Faz. 462276 / Gleba 1 / safra 2026):
+     Estimativa  = HISTPREPRO, último histórico de estimativa do talhão na safra
+                   (CD_HIST 'O' = estimativa original, '1'..'9' = reestimativas;
+                    'E' = encerramento de corte -> não é estimativa)
+     Colhido     = QUEIMA_HE/QUEIMA_DE (Ordem de Corte) encerradas (FG_SITUACAO='F'),
+                   total (FG_PARC_TOT='T') e parcial ('P')
+     Muda        = UPNIVEL3.QT_AREA_MUDA (estimada) e OCORTEMD_HE/DE (colhida)
+     Saldo       = área estimada - área colhida safra - área colhida muda
+     Ton         = saldo * TCH estimado
+   Conferência: talhão 14 -> 12,33-2,98 = 9,35 ha * 78,75 = 736,313 t
+                talhão 15 -> 24,88-7,00 = 17,88 ha * 78,75 = 1.408,050 t
+                talhão 23 -> 1,49 ha * 78,75 = 117,338 t     (total 2.261,70 t)
    ===================================================================== */
-
-
-/* =====================================================================
-   PARTE 1 - DESCOBERTA
-   ===================================================================== */
-
--- 1.1 Banco / schema em uso
-SELECT banner FROM v$version WHERE ROWNUM = 1;
-SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') AS schema_atual FROM dual;
-
--- 1.2 O relatório PRCL-077 tem SQL guardado em package/procedure/view?
-SELECT owner, name, type, line, text
-  FROM all_source
- WHERE owner = 'PIMS_CANA'
-   AND (UPPER(text) LIKE '%PRCL%077%' OR UPPER(text) LIKE '%LOCAIS%COLHER%')
- ORDER BY owner, name, line;
-
-SELECT owner, view_name
-  FROM all_views
- WHERE owner = 'PIMS_CANA'
-   AND (UPPER(view_name) LIKE '%COLHER%' OR UPPER(view_name) LIKE '%PRCL%'
-    OR UPPER(view_name) LIKE '%ESTIM%'  OR UPPER(view_name) LIKE '%CORTE%');
-
--- 1.3 Tabelas candidatas (locais, estimativa, ordem de corte, cadastros)
-SELECT owner, table_name, num_rows
-  FROM all_tables
- WHERE owner = 'PIMS_CANA'
-   AND (   table_name LIKE 'UPNIVEL%'
-        OR table_name LIKE 'HISTPREPRO%'
-        OR table_name LIKE '%ESTIM%'
-        OR table_name LIKE '%CORTE%'
-        OR table_name LIKE '%OCORTE%'
-        OR table_name LIKE 'VARIED%'
-        OR table_name LIKE 'ESTAG%'
-        OR table_name LIKE 'TIPOPROP%' OR table_name LIKE '%TP_PROP%'
-        OR table_name LIKE '%MOD%ADM%'
-        OR table_name LIKE '%DIST%'
-        OR table_name LIKE 'SAFRA%'
-        OR table_name LIKE '%MUDA%'
-        OR table_name LIKE '%INSTANC%'
-        OR table_name LIKE '%UNID%IND%')
- ORDER BY owner, table_name;
-
--- 1.4 Colunas-chave espalhadas pelo banco (descobre onde estão distância, mod. adm, instância, muda...)
-SELECT owner, table_name, column_name, data_type
-  FROM all_tab_columns
- WHERE owner = 'PIMS_CANA'
-   AND (   column_name LIKE '%DIST%'
-        OR column_name LIKE '%MOD_ADM%' OR column_name LIKE '%MODADM%'
-        OR column_name LIKE '%INSTANC%'
-        OR column_name LIKE '%UNID_IND%'
-        OR column_name LIKE '%MUDA%'
-        OR column_name LIKE '%TP_PROPR%')
- ORDER BY column_name, table_name;
-
--- 1.5 Estrutura das tabelas principais (se algum nome não existir, ignore a linha vazia)
-SELECT table_name, column_id, column_name, data_type, data_length, nullable
-  FROM all_tab_columns
- WHERE owner = 'PIMS_CANA'
-   AND table_name IN ('UPNIVEL1','UPNIVEL2','UPNIVEL3','HISTPREPRO','VARIEDAD','VARIEDADES',
-                      'ESTAGIOS','TIPOPROP','SAFRAS','SAFRA','OCORTE','ORDCORTE','ORDEMCORTE',
-                      'OCORTE_DET','OCORTE_HD','OCORTE_IT')
- ORDER BY table_name, column_id;
-
--- 1.6 Amostra do exemplo da planilha (Fazenda 462276, talhões 14/15/23)
-SELECT * FROM PIMS_CANA.UPNIVEL3   WHERE cd_upnivel1 = '462276' AND cd_upnivel3 IN ('14','15','23');
-SELECT * FROM PIMS_CANA.HISTPREPRO WHERE cd_upnivel1 = '462276' AND cd_upnivel3 IN ('14','15','23')
- ORDER BY cd_safra DESC;
-SELECT * FROM PIMS_CANA.UPNIVEL1   WHERE cd_upnivel1 = '462276';
-
-
-/* =====================================================================
-   PARTE 2 - SELECT LOCAIS A COLHER (somente SELECT, sem CREATE)
-   Lógica (igual PRCL-077 + Muda):
-     - Base: talhões com estimativa na safra (destino Safra OU Muda)
-     - Área colhida: soma das OCs encerradas (total e parcial) na safra
-     - Área a colher = Área estimada - Área colhida (só saldo > 0)
-     - Ton estimada a colher = Área a colher * TCH estimado
-   Itens marcados com  -- ???  dependem da Parte 1.
-   ===================================================================== */
-WITH safra_atual AS (
-    SELECT cd_safra, dt_inicio, dt_fim                       -- ???
-      FROM PIMS_CANA.SAFRAS
-     WHERE SYSDATE BETWEEN dt_inicio AND dt_fim
+WITH
+safra_atual AS (            -- safra vigente por instância (fallback: ano-safra abr..mar)
+    SELECT u1.instancia,
+           NVL((SELECT MAX(sp.cd_safra)
+                  FROM PIMS_CANA.SAFRAS_PER sp
+                 WHERE sp.instancia = u1.instancia
+                   AND sp.fg_tipo   = 'CTR'
+                   AND TRUNC(SYSDATE) BETWEEN sp.dt_ini_safra AND sp.dt_fim_safra),
+               EXTRACT(YEAR FROM ADD_MONTHS(SYSDATE, -3))) AS cd_safra
+      FROM (SELECT DISTINCT instancia FROM PIMS_CANA.UPNIVEL1) u1
 ),
-est AS (  -- última estimativa/reestimativa do talhão na safra
-    SELECT h.*,
+est AS (                    -- última estimativa / reestimativa do talhão
+    SELECT h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3,
+           h.cd_hist, h.dt_historico, h.qt_area_prod, h.qt_tch, h.qt_idade,
            ROW_NUMBER() OVER (PARTITION BY h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3
-                              ORDER BY h.dt_historico DESC) rn
+                              ORDER BY h.dt_historico DESC, h.cd_hist DESC) AS rn
       FROM PIMS_CANA.HISTPREPRO h
-      JOIN safra_atual s ON s.cd_safra = h.cd_safra
-     WHERE h.cd_hist IN ('E','R')                            -- ??? códigos de estimativa
+     WHERE h.cd_hist NOT IN ('E', 'S')
 ),
-colhido AS (  -- OCs encerradas total + parcial
-    SELECT oc.cd_safra, oc.cd_upnivel1, oc.cd_upnivel2, oc.cd_upnivel3,
-           SUM(oc.qt_area_colh) AS area_colhida,              -- ???
-           MAX(CASE WHEN oc.fg_situacao = 'P' THEN 1 ELSE 0 END) AS corte_parcial  -- ???
-      FROM PIMS_CANA.OCORTE oc                                          -- ???
-      JOIN safra_atual s ON s.cd_safra = oc.cd_safra
-     WHERE oc.fg_situacao IN ('E','P')                        -- ??? encerrada total/parcial
-     GROUP BY oc.cd_safra, oc.cd_upnivel1, oc.cd_upnivel2, oc.cd_upnivel3
+colh_safra AS (             -- OC de safra encerradas (total + parcial)
+    SELECT d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3,
+           SUM(d.qt_area)                                       AS area_colhida,
+           SUM(d.qt_estim)                                      AS ton_estim_oc,
+           MAX(CASE WHEN d.fg_parc_tot = 'T' THEN 1 ELSE 0 END) AS fl_total,
+           MAX(CASE WHEN d.fg_parc_tot = 'P' THEN 1 ELSE 0 END) AS fl_parcial,
+           MAX(h.dt_fechamento)                                 AS dt_ult_fechamento
+      FROM PIMS_CANA.QUEIMA_DE d
+      JOIN PIMS_CANA.QUEIMA_HE h
+        ON h.instancia = d.instancia
+       AND h.no_queima = d.no_queima
+     WHERE h.fg_situacao = 'F'
+     GROUP BY d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3
+),
+colh_muda AS (              -- OC de muda encerradas (total + parcial)
+    SELECT d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3,
+           SUM(d.qt_area)                                       AS area_colhida,
+           MAX(CASE WHEN d.fg_parc_tot = 'T' THEN 1 ELSE 0 END) AS fl_total
+      FROM PIMS_CANA.OCORTEMD_DE d
+      JOIN PIMS_CANA.OCORTEMD_HE h
+        ON h.instancia = d.instancia
+       AND h.no_ordem  = d.no_ordem
+     WHERE h.fg_situacao = 'F'
+     GROUP BY d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3
+),
+base AS (
+    SELECT u1.instancia,
+           u3.cd_unid_ind,
+           u3.cd_tp_propr,
+           u3.cd_mod_adm,
+           u3.cd_safra,
+           u3.cd_upnivel1, u1.de_upnivel1,
+           u3.cd_upnivel2, u3.cd_upnivel3,
+           u3.cd_varied, u3.cd_estagio,
+           NVL(u3.ds_terra,0) + NVL(u3.ds_asfalto,0) + NVL(u3.ds_hidrovia,0) AS distancia,
+           u3.qt_area_prod                        AS area_talhao,
+           NVL(u3.qt_area_muda,0)                 AS area_muda_estimada,
+           e.cd_hist, e.dt_historico, e.qt_tch, e.qt_idade,
+           NVL(e.qt_area_prod,0)                  AS area_estimada,
+           NVL(cs.area_colhida,0)                 AS area_colhida_safra,
+           NVL(cm.area_colhida,0)                 AS area_colhida_muda,
+           NVL(cs.fl_total,0)                     AS fl_total,
+           NVL(cs.fl_parcial,0)                   AS fl_parcial,
+           cs.dt_ult_fechamento
+      FROM PIMS_CANA.UPNIVEL3 u3
+      JOIN PIMS_CANA.UPNIVEL1 u1
+        ON u1.cd_upnivel1 = u3.cd_upnivel1
+      JOIN safra_atual sa
+        ON sa.instancia = u1.instancia
+       AND sa.cd_safra  = u3.cd_safra
+      JOIN est e
+        ON e.cd_safra    = u3.cd_safra
+       AND e.cd_upnivel1 = u3.cd_upnivel1
+       AND e.cd_upnivel2 = u3.cd_upnivel2
+       AND e.cd_upnivel3 = u3.cd_upnivel3
+       AND e.rn = 1
+      LEFT JOIN colh_safra cs
+        ON cs.cd_safra    = u3.cd_safra
+       AND cs.cd_upnivel1 = u3.cd_upnivel1
+       AND cs.cd_upnivel2 = u3.cd_upnivel2
+       AND cs.cd_upnivel3 = u3.cd_upnivel3
+      LEFT JOIN colh_muda cm
+        ON cm.cd_safra    = u3.cd_safra
+       AND cm.cd_upnivel1 = u3.cd_upnivel1
+       AND cm.cd_upnivel2 = u3.cd_upnivel2
+       AND cm.cd_upnivel3 = u3.cd_upnivel3
 )
 SELECT
-    u1.instancia                                   AS instancia,            -- ???
-    u3.cd_unid_ind                                 AS unidade_industrial,
-    u3.cd_tp_propr                                 AS cod_tp_proprietario,
-    tp.de_tp_propr                                 AS dsc_tp_proprietario,
-    u1.cd_mod_adm                                  AS cod_mod_adm,          -- ???
-    ma.de_mod_adm                                  AS dsc_mod_adm,          -- ???
-    u3.cd_upnivel1                                 AS cod_fazenda,
-    u1.de_upnivel1                                 AS dsc_fazenda,
-    u3.cd_upnivel2                                 AS cod_gleba,
-    u3.cd_upnivel3                                 AS cod_talhao,
-    u3.cd_varied                                   AS cod_variedade,
-    v.de_varied                                    AS dsc_variedade,
-    u3.cd_estagio                                  AS cod_estagio,
-    es.de_estagio                                  AS dsc_estagio,
-    ROUND(MONTHS_BETWEEN(SYSDATE, u3.dt_ultimo_corte),1) AS idade_cana_meses,
-    NVL(u1.qt_dist_terra,0) + NVL(u1.qt_dist_asfalto,0)
-      + NVL(u1.qt_dist_hidrovia,0)                 AS distancia,            -- ???
-    u3.qt_area_prod                                AS area_talhao,
-    e.qt_area_prod                                 AS area_estimada,
-    CASE WHEN e.fg_destino = 'M' THEN 'Muda' ELSE 'Safra' END AS tipo_estimativa, -- ???
-    NVL(c.area_colhida,0)                          AS area_colhida,
-    e.qt_area_prod - NVL(c.area_colhida,0)         AS area_a_colher,
-    CASE WHEN c.corte_parcial = 1 THEN 'S' ELSE 'N' END AS corte_parcial,
-    e.dt_historico                                 AS data_estimativa,
-    e.qt_tch                                       AS tch_estimado,         -- ??? (planilha chama de "TC Estimado")
-    ROUND((e.qt_area_prod - NVL(c.area_colhida,0)) * e.qt_tch, 3) AS ton_estimada
-FROM est e
-JOIN PIMS_CANA.UPNIVEL3 u3  ON u3.cd_safra    = e.cd_safra
-                 AND u3.cd_upnivel1 = e.cd_upnivel1
-                 AND u3.cd_upnivel2 = e.cd_upnivel2
-                 AND u3.cd_upnivel3 = e.cd_upnivel3
-JOIN PIMS_CANA.UPNIVEL1 u1  ON u1.cd_upnivel1 = u3.cd_upnivel1
-LEFT JOIN PIMS_CANA.TIPOPROP tp ON tp.cd_tp_propr = u3.cd_tp_propr
-LEFT JOIN PIMS_CANA.VARIEDAD v  ON v.cd_varied   = u3.cd_varied
-LEFT JOIN PIMS_CANA.ESTAGIOS es ON es.cd_estagio = u3.cd_estagio
-LEFT JOIN PIMS_CANA.MOD_ADM  ma ON ma.cd_mod_adm = u1.cd_mod_adm                  -- ???
-LEFT JOIN colhido c   ON c.cd_safra    = e.cd_safra
-                     AND c.cd_upnivel1 = e.cd_upnivel1
-                     AND c.cd_upnivel2 = e.cd_upnivel2
-                     AND c.cd_upnivel3 = e.cd_upnivel3
-WHERE e.rn = 1
-  AND e.qt_area_prod - NVL(c.area_colhida,0) > 0;
+    b.instancia                                          AS INSTANCIA,
+    b.cd_unid_ind                                        AS UNIDADE_INDUSTRIAL,
+    b.cd_safra                                           AS COD_SAFRA,
+    sf.de_safra                                          AS DSC_SAFRA,
+    b.cd_tp_propr                                        AS COD_TP_PROPRIETARIO,
+    tp.de_tp_propr                                       AS DSC_TP_PROPRIETARIO,
+    TRIM(b.cd_mod_adm)                                   AS COD_MOD_ADM,
+    ma.de_mod_adm                                        AS DSC_MOD_ADM,
+    TRIM(b.cd_upnivel1)                                  AS COD_FAZENDA,
+    b.de_upnivel1                                        AS DSC_FAZENDA,
+    TRIM(b.cd_upnivel2)                                  AS COD_GLEBA,
+    TRIM(b.cd_upnivel3)                                  AS COD_TALHAO,
+    b.cd_varied                                          AS COD_VARIEDADE,
+    va.de_varied                                         AS DSC_VARIEDADE,
+    b.cd_estagio                                         AS COD_ESTAGIO,
+    es.de_estagio                                        AS DSC_ESTAGIO,
+    ROUND(b.qt_idade / 30, 1)                            AS IDADE_CANA_MESES,
+    b.distancia                                          AS DISTANCIA_KM,
+    b.area_talhao                                        AS AREA_TALHAO,
+    b.area_estimada                                      AS AREA_ESTIMADA,
+    b.area_muda_estimada                                 AS AREA_MUDA_ESTIMADA,
+    b.area_colhida_safra                                 AS AREA_COLHIDA_SAFRA,
+    b.area_colhida_muda                                  AS AREA_COLHIDA_MUDA,
+    CASE WHEN b.area_muda_estimada > 0 OR b.area_colhida_muda > 0
+         THEN 'Muda' ELSE 'Safra' END                    AS TIPO_ESTIMATIVA,
+    CASE WHEN b.fl_parcial = 1 THEN 'S' ELSE 'N' END     AS CORTE_PARCIAL,
+    GREATEST(b.area_estimada - b.area_colhida_safra - b.area_colhida_muda, 0)
+                                                         AS AREA_A_COLHER,
+    DECODE(b.cd_hist, 'O', 'Estimativa', 'Reestimativa ' || b.cd_hist)
+                                                         AS ORIGEM_ESTIMATIVA,
+    b.dt_historico                                       AS DATA_ESTIMATIVA,
+    b.qt_tch                                             AS TCH_ESTIMADO,
+    ROUND(GREATEST(b.area_estimada - b.area_colhida_safra - b.area_colhida_muda, 0)
+          * b.qt_tch, 3)                                 AS TON_ESTIMADA,
+    b.dt_ult_fechamento                                  AS DT_ULT_FECHAMENTO_OC
+FROM base b
+LEFT JOIN PIMS_CANA.SAFRAS     sf ON sf.cd_safra    = b.cd_safra
+LEFT JOIN PIMS_CANA.TIPOPROPRI tp ON tp.cd_tp_propr = b.cd_tp_propr
+LEFT JOIN PIMS_CANA.MODULOADM  ma ON ma.cd_mod_adm  = b.cd_mod_adm
+LEFT JOIN PIMS_CANA.VARIEDADES va ON va.cd_varied   = b.cd_varied
+LEFT JOIN PIMS_CANA.ESTAGIOS   es ON es.cd_estagio  = b.cd_estagio
+WHERE b.fl_total = 0                                                     -- OC total encerrada = local já colhido
+  AND b.area_estimada - b.area_colhida_safra - b.area_colhida_muda > 0  -- só saldo a colher
+ORDER BY b.instancia, b.cd_upnivel1, b.cd_upnivel2, b.cd_upnivel3;
+
+
+/* ---------------------------------------------------------------------
+   CONFERÊNCIA (rodar o SELECT acima com este filtro no lugar do ORDER BY):
+     AND TRIM(b.cd_upnivel1) = '462276'
+   Esperado: talhões 14 (9,35 ha / 736,313 t), 15 (17,88 ha / 1.408,050 t),
+             23 (1,49 ha / 117,338 t)  -> total 2.261,70 t  (igual ao PRCL-077)
+   --------------------------------------------------------------------- */
+
+-- Pendência: confirmar o que é CD_HIST = 'S' (997 linhas) - pode ser estimativa de muda
+SELECT h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3, h.dt_historico,
+       h.qt_area_prod, h.qt_tch, h.qt_cana_entr, h.cd_proc_muda, h.cd_estagio
+  FROM PIMS_CANA.HISTPREPRO h
+ WHERE h.cd_hist = 'S'
+   AND ROWNUM <= 50;
