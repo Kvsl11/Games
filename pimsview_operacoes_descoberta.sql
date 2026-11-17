@@ -24,7 +24,8 @@ cols AS (
      GROUP BY c.owner, c.table_name
 ),
 cand AS (
-    SELECT t.owner, t.table_name, t.num_rows, t.last_analyzed, c.*,
+    SELECT t.owner, t.table_name, t.num_rows, t.last_analyzed,
+           c.tem_oper, c.tem_faz, c.tem_gleba, c.tem_safra, c.tem_area, c.tem_long, c.colunas,
            CASE WHEN c.tem_oper = 1 AND c.tem_faz = 1 AND c.tem_area = 1 THEN 1   -- forte candidata
                 WHEN c.tem_oper = 1 AND c.tem_faz = 1                    THEN 2
                 WHEN t.table_name LIKE 'OPERAC%'                         THEN 3   -- cadastro
