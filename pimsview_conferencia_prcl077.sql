@@ -1,5 +1,5 @@
-/* CONFERÊNCIA x PRCL-077 - totais por instância e safra (somente parte de SAFRA)
-   Esperado instância 20 (Ivinhema): 1.916 talhões | 30.835,41 ha | 2.609.598,051 t */
+/* CONFERÊNCIA x PRCL-077 - totais por unidade industrial (empresa) e safra (somente parte de SAFRA)
+   Esperado unidade 20 (Ivinhema): 1.916 talhões | 30.835,41 ha | 2.609.598,051 t */
 WITH
 safra_atual AS (            -- safra vigente por instância (fallback: ano-safra abr..mar)
     SELECT u1.instancia,
@@ -99,7 +99,7 @@ base AS (
        AND cm.cd_upnivel3 = u3.cd_upnivel3
      WHERE es.cd_hist IS NOT NULL OR em.cd_hist IS NOT NULL       -- talhão com estimativa
 )
-SELECT r.instancia,
+SELECT r.unidade_industrial,
        r.cod_safra,
        COUNT(*)                            AS talhoes,
        ROUND(SUM(r.area_a_colher), 2)      AS area_safra,
@@ -160,5 +160,5 @@ SELECT r.instancia,
         WHERE b.saldo_safra > 0 OR b.saldo_muda > 0                              -- só locais com saldo a colher
        ) r
  WHERE r.area_a_colher > 0
- GROUP BY r.instancia, r.cod_safra
- ORDER BY r.instancia, r.cod_safra
+ GROUP BY r.unidade_industrial, r.cod_safra
+ ORDER BY r.unidade_industrial, r.cod_safra
