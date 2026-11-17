@@ -109,7 +109,7 @@ SELECT
     b.cd_tp_propr                                        AS COD_TP_PROPRIETARIO,
     tp.de_tp_propr                                       AS DSC_TP_PROPRIETARIO,
     TRIM(b.cd_mod_adm)                                   AS COD_MOD_ADM,
-    ma.de_mod_adm                                        AS DSC_MOD_ADM,
+    NVL(ma.de_mod_adm, ma.da_mod_adm)                    AS DSC_MOD_ADM,   -- se continuar vazio, apague esta linha e o JOIN MODULOADM
     TRIM(b.cd_upnivel1)                                  AS COD_FAZENDA,
     b.de_upnivel1                                        AS DSC_FAZENDA,
     TRIM(b.cd_upnivel2)                                  AS COD_GLEBA,
@@ -140,7 +140,7 @@ SELECT
 FROM base b
 LEFT JOIN PIMS_CANA.SAFRAS     sf ON sf.cd_safra    = b.cd_safra
 LEFT JOIN PIMS_CANA.TIPOPROPRI tp ON tp.cd_tp_propr = b.cd_tp_propr
-LEFT JOIN PIMS_CANA.MODULOADM  ma ON ma.cd_mod_adm  = b.cd_mod_adm
+LEFT JOIN PIMS_CANA.MODULOADM  ma ON TRIM(ma.cd_mod_adm) = TRIM(b.cd_mod_adm)
 LEFT JOIN PIMS_CANA.VARIEDADES va ON va.cd_varied   = b.cd_varied
 LEFT JOIN PIMS_CANA.ESTAGIOS   es ON es.cd_estagio  = b.cd_estagio
 WHERE b.fl_total = 0                                                     -- OC total encerrada = local já colhido
@@ -154,6 +154,10 @@ ORDER BY b.instancia, b.cd_upnivel1, b.cd_upnivel2, b.cd_upnivel3;
    Esperado: talhões 14 (9,35 ha / 736,313 t), 15 (17,88 ha / 1.408,050 t),
              23 (1,49 ha / 117,338 t)  -> total 2.261,70 t  (igual ao PRCL-077)
    --------------------------------------------------------------------- */
+
+-- Diagnóstico DSC_MOD_ADM: como o código está gravado nas duas tabelas
+SELECT '[' || cd_mod_adm || ']' cod, da_mod_adm, de_mod_adm FROM PIMS_CANA.MODULOADM;
+SELECT DISTINCT '[' || cd_mod_adm || ']' cod FROM PIMS_CANA.UPNIVEL3 WHERE TRIM(cd_upnivel1) = '462276';
 
 -- Pendência: confirmar o que é CD_HIST = 'S' (997 linhas) - pode ser estimativa de muda
 SELECT h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3, h.dt_historico,
