@@ -1,19 +1,7 @@
 /* =====================================================================
    PIMS VIEW - LOCAIS A COLHER  (réplica PRCL-077 + área de MUDA)
    Somente SELECT - owner PIMS_CANA - Oracle
-
-   Regra (validada com Faz. 462276 / Gleba 1 / safra 2026):
-     Estimativa  = HISTPREPRO, último histórico de estimativa do talhão na safra
-                   (CD_HIST 'O' = estimativa original, '1'..'9' = reestimativas;
-                    'E' = encerramento de corte -> não é estimativa)
-     Colhido     = QUEIMA_HE/QUEIMA_DE (Ordem de Corte) encerradas (FG_SITUACAO='F'),
-                   total (FG_PARC_TOT='T') e parcial ('P')
-     Muda        = UPNIVEL3.QT_AREA_MUDA (estimada) e OCORTEMD_HE/DE (colhida)
-     Saldo       = área estimada - área colhida safra - área colhida muda
-     Ton         = saldo * TCH estimado
-   Conferência: talhão 14 -> 12,33-2,98 = 9,35 ha * 78,75 = 736,313 t
-                talhão 15 -> 24,88-7,00 = 17,88 ha * 78,75 = 1.408,050 t
-                talhão 23 -> 1,49 ha * 78,75 = 117,338 t     (total 2.261,70 t)
+   Traz a safra vigente e a seguinte (tombo / virada de safra): filtrar por COD_SAFRA.
    ===================================================================== */
 WITH
 safra_atual AS (            -- safra vigente por instância (fallback: ano-safra abr..mar)
@@ -26,7 +14,7 @@ safra_atual AS (            -- safra vigente por instância (fallback: ano-safra
                EXTRACT(YEAR FROM ADD_MONTHS(SYSDATE, -3))) AS cd_safra
       FROM (SELECT DISTINCT instancia FROM PIMS_CANA.UPNIVEL1) u1
 ),
-est AS (                    -- última estimativa / reestimativa do talhão
+est AS (                    -- última estimativa / reestimativa do talhão ('E' = encerramento)
     SELECT h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3,
            h.cd_hist, h.dt_historico, h.qt_area_prod, h.qt_tch, h.qt_idade,
            ROW_NUMBER() OVER (PARTITION BY h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3
@@ -37,7 +25,6 @@ est AS (                    -- última estimativa / reestimativa do talhão
 colh_safra AS (             -- OC de safra encerradas (total + parcial)
     SELECT d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3,
            SUM(d.qt_area)                                       AS area_colhida,
-           SUM(d.qt_estim)                                      AS ton_estim_oc,
            MAX(CASE WHEN d.fg_parc_tot = 'T' THEN 1 ELSE 0 END) AS fl_total,
            MAX(CASE WHEN d.fg_parc_tot = 'P' THEN 1 ELSE 0 END) AS fl_parcial,
            MAX(h.dt_fechamento)                                 AS dt_ult_fechamento
@@ -50,8 +37,7 @@ colh_safra AS (             -- OC de safra encerradas (total + parcial)
 ),
 colh_muda AS (              -- OC de muda encerradas (total + parcial)
     SELECT d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3,
-           SUM(d.qt_area)                                       AS area_colhida,
-           MAX(CASE WHEN d.fg_parc_tot = 'T' THEN 1 ELSE 0 END) AS fl_total
+           SUM(d.qt_area) AS area_colhida
       FROM PIMS_CANA.OCORTEMD_DE d
       JOIN PIMS_CANA.OCORTEMD_HE h
         ON h.instancia = d.instancia
@@ -83,7 +69,7 @@ base AS (
         ON u1.cd_upnivel1 = u3.cd_upnivel1
       JOIN safra_atual sa
         ON sa.instancia = u1.instancia
-       AND sa.cd_safra  = u3.cd_safra
+       AND u3.cd_safra IN (sa.cd_safra, sa.cd_safra + 1)      -- safra atual + seguinte (tombo)
       JOIN est e
         ON e.cd_safra    = u3.cd_safra
        AND e.cd_upnivel1 = u3.cd_upnivel1
@@ -109,7 +95,7 @@ SELECT
     b.cd_tp_propr                                        AS COD_TP_PROPRIETARIO,
     tp.de_tp_propr                                       AS DSC_TP_PROPRIETARIO,
     TRIM(b.cd_mod_adm)                                   AS COD_MOD_ADM,
-    NVL(ma.de_mod_adm, ma.da_mod_adm)                    AS DSC_MOD_ADM,   -- se continuar vazio, apague esta linha e o JOIN MODULOADM
+    NVL(ma.de_mod_adm, ma.da_mod_adm)                    AS DSC_MOD_ADM,
     TRIM(b.cd_upnivel1)                                  AS COD_FAZENDA,
     b.de_upnivel1                                        AS DSC_FAZENDA,
     TRIM(b.cd_upnivel2)                                  AS COD_GLEBA,
@@ -145,23 +131,4 @@ LEFT JOIN PIMS_CANA.VARIEDADES va ON va.cd_varied   = b.cd_varied
 LEFT JOIN PIMS_CANA.ESTAGIOS   es ON es.cd_estagio  = b.cd_estagio
 WHERE b.fl_total = 0                                                     -- OC total encerrada = local já colhido
   AND b.area_estimada - b.area_colhida_safra - b.area_colhida_muda > 0  -- só saldo a colher
-ORDER BY b.instancia, b.cd_upnivel1, b.cd_upnivel2, b.cd_upnivel3;
-
-
-/* ---------------------------------------------------------------------
-   CONFERÊNCIA (rodar o SELECT acima com este filtro no lugar do ORDER BY):
-     AND TRIM(b.cd_upnivel1) = '462276'
-   Esperado: talhões 14 (9,35 ha / 736,313 t), 15 (17,88 ha / 1.408,050 t),
-             23 (1,49 ha / 117,338 t)  -> total 2.261,70 t  (igual ao PRCL-077)
-   --------------------------------------------------------------------- */
-
--- Diagnóstico DSC_MOD_ADM: como o código está gravado nas duas tabelas
-SELECT '[' || cd_mod_adm || ']' cod, da_mod_adm, de_mod_adm FROM PIMS_CANA.MODULOADM;
-SELECT DISTINCT '[' || cd_mod_adm || ']' cod FROM PIMS_CANA.UPNIVEL3 WHERE TRIM(cd_upnivel1) = '462276';
-
--- Pendência: confirmar o que é CD_HIST = 'S' (997 linhas) - pode ser estimativa de muda
-SELECT h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3, h.dt_historico,
-       h.qt_area_prod, h.qt_tch, h.qt_cana_entr, h.cd_proc_muda, h.cd_estagio
-  FROM PIMS_CANA.HISTPREPRO h
- WHERE h.cd_hist = 'S'
-   AND ROWNUM <= 50;
+ORDER BY b.cd_safra, b.instancia, b.cd_upnivel1, b.cd_upnivel2, b.cd_upnivel3
