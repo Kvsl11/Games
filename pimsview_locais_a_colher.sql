@@ -18,18 +18,20 @@ SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') AS schema_atual FROM dual;
 -- 1.2 O relatório PRCL-077 tem SQL guardado em package/procedure/view?
 SELECT owner, name, type, line, text
   FROM all_source
- WHERE UPPER(text) LIKE '%PRCL%077%' OR UPPER(text) LIKE '%LOCAIS%COLHER%'
+ WHERE owner = 'PIMS_CANA'
+   AND (UPPER(text) LIKE '%PRCL%077%' OR UPPER(text) LIKE '%LOCAIS%COLHER%')
  ORDER BY owner, name, line;
 
 SELECT owner, view_name
   FROM all_views
- WHERE UPPER(view_name) LIKE '%COLHER%' OR UPPER(view_name) LIKE '%PRCL%'
-    OR UPPER(view_name) LIKE '%ESTIM%'  OR UPPER(view_name) LIKE '%CORTE%';
+ WHERE owner = 'PIMS_CANA'
+   AND (UPPER(view_name) LIKE '%COLHER%' OR UPPER(view_name) LIKE '%PRCL%'
+    OR UPPER(view_name) LIKE '%ESTIM%'  OR UPPER(view_name) LIKE '%CORTE%');
 
 -- 1.3 Tabelas candidatas (locais, estimativa, ordem de corte, cadastros)
 SELECT owner, table_name, num_rows
   FROM all_tables
- WHERE owner NOT IN ('SYS','SYSTEM','XDB','MDSYS','CTXSYS','ORDSYS','WMSYS','OLAPSYS','DBSNMP','OUTLN','APEX_040000')
+ WHERE owner = 'PIMS_CANA'
    AND (   table_name LIKE 'UPNIVEL%'
         OR table_name LIKE 'HISTPREPRO%'
         OR table_name LIKE '%ESTIM%'
@@ -49,7 +51,7 @@ SELECT owner, table_name, num_rows
 -- 1.4 Colunas-chave espalhadas pelo banco (descobre onde estão distância, mod. adm, instância, muda...)
 SELECT owner, table_name, column_name, data_type
   FROM all_tab_columns
- WHERE owner NOT IN ('SYS','SYSTEM','XDB','MDSYS','CTXSYS','ORDSYS','WMSYS','OLAPSYS','DBSNMP','OUTLN')
+ WHERE owner = 'PIMS_CANA'
    AND (   column_name LIKE '%DIST%'
         OR column_name LIKE '%MOD_ADM%' OR column_name LIKE '%MODADM%'
         OR column_name LIKE '%INSTANC%'
@@ -61,16 +63,17 @@ SELECT owner, table_name, column_name, data_type
 -- 1.5 Estrutura das tabelas principais (se algum nome não existir, ignore a linha vazia)
 SELECT table_name, column_id, column_name, data_type, data_length, nullable
   FROM all_tab_columns
- WHERE table_name IN ('UPNIVEL1','UPNIVEL2','UPNIVEL3','HISTPREPRO','VARIEDAD','VARIEDADES',
+ WHERE owner = 'PIMS_CANA'
+   AND table_name IN ('UPNIVEL1','UPNIVEL2','UPNIVEL3','HISTPREPRO','VARIEDAD','VARIEDADES',
                       'ESTAGIOS','TIPOPROP','SAFRAS','SAFRA','OCORTE','ORDCORTE','ORDEMCORTE',
                       'OCORTE_DET','OCORTE_HD','OCORTE_IT')
  ORDER BY table_name, column_id;
 
 -- 1.6 Amostra do exemplo da planilha (Fazenda 462276, talhões 14/15/23)
-SELECT * FROM upnivel3   WHERE cd_upnivel1 = '462276' AND cd_upnivel3 IN ('14','15','23');
-SELECT * FROM histprepro WHERE cd_upnivel1 = '462276' AND cd_upnivel3 IN ('14','15','23')
+SELECT * FROM PIMS_CANA.UPNIVEL3   WHERE cd_upnivel1 = '462276' AND cd_upnivel3 IN ('14','15','23');
+SELECT * FROM PIMS_CANA.HISTPREPRO WHERE cd_upnivel1 = '462276' AND cd_upnivel3 IN ('14','15','23')
  ORDER BY cd_safra DESC;
-SELECT * FROM upnivel1   WHERE cd_upnivel1 = '462276';
+SELECT * FROM PIMS_CANA.UPNIVEL1   WHERE cd_upnivel1 = '462276';
 
 
 /* =====================================================================
@@ -83,17 +86,17 @@ SELECT * FROM upnivel1   WHERE cd_upnivel1 = '462276';
    Itens marcados com  -- ???  dependem da Parte 1.
    ===================================================================== */
 /*
-CREATE OR REPLACE VIEW V_PV_LOCAIS_A_COLHER AS
+CREATE OR REPLACE VIEW PIMS_CANA.V_PV_LOCAIS_A_COLHER AS
 WITH safra_atual AS (
     SELECT cd_safra, dt_inicio, dt_fim                       -- ???
-      FROM safras
+      FROM PIMS_CANA.SAFRAS
      WHERE SYSDATE BETWEEN dt_inicio AND dt_fim
 ),
 est AS (  -- última estimativa/reestimativa do talhão na safra
     SELECT h.*,
            ROW_NUMBER() OVER (PARTITION BY h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3
                               ORDER BY h.dt_historico DESC) rn
-      FROM histprepro h
+      FROM PIMS_CANA.HISTPREPRO h
       JOIN safra_atual s ON s.cd_safra = h.cd_safra
      WHERE h.cd_hist IN ('E','R')                            -- ??? códigos de estimativa
 ),
@@ -101,7 +104,7 @@ colhido AS (  -- OCs encerradas total + parcial
     SELECT oc.cd_safra, oc.cd_upnivel1, oc.cd_upnivel2, oc.cd_upnivel3,
            SUM(oc.qt_area_colh) AS area_colhida,              -- ???
            MAX(CASE WHEN oc.fg_situacao = 'P' THEN 1 ELSE 0 END) AS corte_parcial  -- ???
-      FROM ocorte oc                                          -- ???
+      FROM PIMS_CANA.OCORTE oc                                          -- ???
       JOIN safra_atual s ON s.cd_safra = oc.cd_safra
      WHERE oc.fg_situacao IN ('E','P')                        -- ??? encerrada total/parcial
      GROUP BY oc.cd_safra, oc.cd_upnivel1, oc.cd_upnivel2, oc.cd_upnivel3
@@ -134,15 +137,15 @@ SELECT
     e.qt_tch                                       AS tch_estimado,         -- ??? (planilha chama de "TC Estimado")
     ROUND((e.qt_area_prod - NVL(c.area_colhida,0)) * e.qt_tch, 3) AS ton_estimada
 FROM est e
-JOIN upnivel3 u3  ON u3.cd_safra    = e.cd_safra
+JOIN PIMS_CANA.UPNIVEL3 u3  ON u3.cd_safra    = e.cd_safra
                  AND u3.cd_upnivel1 = e.cd_upnivel1
                  AND u3.cd_upnivel2 = e.cd_upnivel2
                  AND u3.cd_upnivel3 = e.cd_upnivel3
-JOIN upnivel1 u1  ON u1.cd_upnivel1 = u3.cd_upnivel1
-LEFT JOIN tipoprop tp ON tp.cd_tp_propr = u3.cd_tp_propr
-LEFT JOIN variedad v  ON v.cd_varied   = u3.cd_varied
-LEFT JOIN estagios es ON es.cd_estagio = u3.cd_estagio
-LEFT JOIN mod_adm  ma ON ma.cd_mod_adm = u1.cd_mod_adm                  -- ???
+JOIN PIMS_CANA.UPNIVEL1 u1  ON u1.cd_upnivel1 = u3.cd_upnivel1
+LEFT JOIN PIMS_CANA.TIPOPROP tp ON tp.cd_tp_propr = u3.cd_tp_propr
+LEFT JOIN PIMS_CANA.VARIEDAD v  ON v.cd_varied   = u3.cd_varied
+LEFT JOIN PIMS_CANA.ESTAGIOS es ON es.cd_estagio = u3.cd_estagio
+LEFT JOIN PIMS_CANA.MOD_ADM  ma ON ma.cd_mod_adm = u1.cd_mod_adm                  -- ???
 LEFT JOIN colhido c   ON c.cd_safra    = e.cd_safra
                      AND c.cd_upnivel1 = e.cd_upnivel1
                      AND c.cd_upnivel2 = e.cd_upnivel2
