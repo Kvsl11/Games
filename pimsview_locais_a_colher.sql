@@ -113,7 +113,6 @@ SELECT
     b.instancia                                          AS INSTANCIA,
     b.cd_unid_ind                                        AS UNIDADE_INDUSTRIAL,
     b.cd_safra                                           AS COD_SAFRA,
-    sf.de_safra                                          AS DSC_SAFRA,
     b.cd_tp_propr                                        AS COD_TP_PROPRIETARIO,
     tp.de_tp_propr                                       AS DSC_TP_PROPRIETARIO,
     TRIM(b.cd_mod_adm)                                   AS COD_MOD_ADM,
@@ -147,7 +146,7 @@ SELECT
     b.tch_muda                                           AS TCH_MUDA,
     ROUND(b.saldo_muda  * b.tch_muda, 3)                 AS TON_MUDA_ESTIMADA,
     b.dt_ult_oc                                          AS DT_ULT_OC,
-    DECODE(b.situacao_oc, 'A', 'Aberta', 'F', 'Fechada') AS SITUACAO_ULT_OC
+    b.situacao_oc                                        AS SITUACAO_ULT_OC   -- A = aberta, F = fechada
 FROM (SELECT x.*,
              -- safra: estimada - OCs de safra (OC total = saldo zero)
              CASE WHEN x.fl_total = 1 THEN 0
@@ -156,7 +155,6 @@ FROM (SELECT x.*,
              CASE WHEN x.fl_total_muda = 1 THEN 0
                   ELSE GREATEST(x.area_muda_estimada - x.area_colhida_muda, 0) END AS saldo_muda
         FROM base x) b
-LEFT JOIN PIMS_CANA.SAFRAS     sf ON sf.cd_safra    = b.cd_safra
 LEFT JOIN PIMS_CANA.TIPOPROPRI tp ON tp.cd_tp_propr = b.cd_tp_propr
 LEFT JOIN PIMS_CANA.MODULOADM  ma ON TRIM(ma.cd_mod_adm) = TRIM(b.cd_mod_adm)
 LEFT JOIN PIMS_CANA.VARIEDADES va ON va.cd_varied   = b.cd_varied
