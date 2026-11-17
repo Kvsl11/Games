@@ -108,27 +108,33 @@ SELECT
     b.distancia                                          AS DISTANCIA_KM,
     b.area_talhao                                        AS AREA_TALHAO,
     b.area_estimada                                      AS AREA_ESTIMADA,
-    b.area_muda_estimada                                 AS AREA_MUDA_ESTIMADA,
     b.area_colhida_safra                                 AS AREA_COLHIDA_SAFRA,
-    b.area_colhida_muda                                  AS AREA_COLHIDA_MUDA,
-    CASE WHEN b.area_muda_estimada > 0 OR b.area_colhida_muda > 0
-         THEN 'Muda' ELSE 'Safra' END                    AS TIPO_ESTIMATIVA,
+    b.saldo_safra                                        AS AREA_A_COLHER,
+    b.area_muda_estimada                                 AS AREA_MUDA_ESTIMADA,
+    b.area_colhida_muda                                  AS AREA_MUDA_COLHIDA,
+    b.saldo_muda                                         AS AREA_MUDA_A_COLHER,
+    CASE WHEN b.saldo_safra > 0 AND b.saldo_muda > 0 THEN 'Safra + Muda'
+         WHEN b.saldo_muda  > 0                      THEN 'Muda'
+         ELSE 'Safra' END                                AS TIPO_ESTIMATIVA,
     CASE WHEN b.fl_parcial = 1 THEN 'S' ELSE 'N' END     AS CORTE_PARCIAL,
-    GREATEST(b.area_estimada - b.area_colhida_safra - b.area_colhida_muda, 0)
-                                                         AS AREA_A_COLHER,
     DECODE(b.cd_hist, 'O', 'Estimativa', 'Reestimativa ' || b.cd_hist)
                                                          AS ORIGEM_ESTIMATIVA,
     b.dt_historico                                       AS DATA_ESTIMATIVA,
     b.qt_tch                                             AS TCH_ESTIMADO,
-    ROUND(GREATEST(b.area_estimada - b.area_colhida_safra - b.area_colhida_muda, 0)
-          * b.qt_tch, 3)                                 AS TON_ESTIMADA,
+    ROUND(b.saldo_safra * b.qt_tch, 3)                   AS TON_ESTIMADA,
+    ROUND(b.saldo_muda  * b.qt_tch, 3)                   AS TON_MUDA_ESTIMADA,
     b.dt_ult_fechamento                                  AS DT_ULT_FECHAMENTO_OC
-FROM base b
+FROM (SELECT x.*,
+             -- safra: estimada - OC safra encerradas (OC total = saldo zero)
+             CASE WHEN x.fl_total = 1 THEN 0
+                  ELSE GREATEST(x.area_estimada - x.area_colhida_safra, 0) END AS saldo_safra,
+             -- muda: área de muda do talhão - OC de muda encerradas
+             GREATEST(x.area_muda_estimada - x.area_colhida_muda, 0)          AS saldo_muda
+        FROM base x) b
 LEFT JOIN PIMS_CANA.SAFRAS     sf ON sf.cd_safra    = b.cd_safra
 LEFT JOIN PIMS_CANA.TIPOPROPRI tp ON tp.cd_tp_propr = b.cd_tp_propr
 LEFT JOIN PIMS_CANA.MODULOADM  ma ON TRIM(ma.cd_mod_adm) = TRIM(b.cd_mod_adm)
 LEFT JOIN PIMS_CANA.VARIEDADES va ON va.cd_varied   = b.cd_varied
 LEFT JOIN PIMS_CANA.ESTAGIOS   es ON es.cd_estagio  = b.cd_estagio
-WHERE b.fl_total = 0                                                     -- OC total encerrada = local já colhido
-  AND b.area_estimada - b.area_colhida_safra - b.area_colhida_muda > 0  -- só saldo a colher
+WHERE b.saldo_safra > 0 OR b.saldo_muda > 0                              -- só locais com saldo a colher
 ORDER BY b.cd_safra, b.instancia, b.cd_upnivel1, b.cd_upnivel2, b.cd_upnivel3
