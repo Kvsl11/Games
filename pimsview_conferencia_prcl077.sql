@@ -132,9 +132,6 @@ SELECT r.unidade_industrial,
             b.area_muda_estimada                                 AS AREA_MUDA_ESTIMADA,
             b.area_colhida_muda                                  AS AREA_MUDA_COLHIDA,
             b.saldo_muda                                         AS AREA_MUDA_A_COLHER,
-            CASE WHEN b.saldo_safra > 0 AND b.saldo_muda > 0 THEN 'Safra + Muda'
-                 WHEN b.saldo_muda  > 0                      THEN 'Muda'
-                 ELSE 'Safra' END                                AS TIPO_ESTIMATIVA,
             CASE WHEN b.fl_parcial = 1 THEN 'S' ELSE 'N' END     AS CORTE_PARCIAL,
             DECODE(b.cd_hist, 'O', 'Estimativa', NULL, 'Estimativa Muda', 'Reestimativa ' || b.cd_hist)
                                                                  AS ORIGEM_ESTIMATIVA,
