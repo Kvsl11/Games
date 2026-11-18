@@ -149,7 +149,6 @@ SELECT r.unidade_industrial,
         LEFT JOIN PIMS_CANA.VARIEDADES va ON va.cd_varied   = b.cd_varied
         LEFT JOIN PIMS_CANA.ESTAGIOS   es ON es.cd_estagio  = b.cd_estagio
         WHERE (b.saldo_safra > 0 OR b.saldo_muda > 0)                            -- só locais com saldo a colher
-        --AND NVL(b.situacao_oc, '-') <> 'F'   -- OPCIONAL: tira talhões com OC fechada (inclusive parciais com saldo)
        ) r
  WHERE r.area_a_colher > 0
  GROUP BY r.unidade_industrial, r.cod_safra
