@@ -10,8 +10,7 @@
      - CD_HIST 'E'      = baixa gerada pela OC (não é estimativa)
      - Colhido          = OCs emitidas (abertas 'A' ou fechadas 'F'), corte total 'T' ou parcial 'P'
                           -> OC total zera o saldo do talhão (safra e muda); OC parcial desconta a área
-     - SITUACAO_ULT_OC 'F' = documento da OC fechado (não significa talhão colhido por inteiro):
-       talhão com OC parcial fechada continua com saldo, igual ao '*' do PRCL-077
+     - OC parcial fechada não encerra o talhão: o saldo continua, igual ao '*' do PRCL-077 (CORTE_PARCIAL = 'S')
    ===================================================================== */
 WITH
 safra_atual AS (            -- safra vigente por instância (fallback: ano-safra abr..mar)
@@ -144,9 +143,7 @@ SELECT
     b.tch_safra                                          AS TCH_ESTIMADO_SAFRA,
     ROUND(b.saldo_safra * b.tch_safra, 3)                AS TON_ESTIMADA,
     b.tch_muda                                           AS TCH_MUDA,
-    ROUND(b.saldo_muda  * b.tch_muda, 3)                 AS TON_MUDA_ESTIMADA,
-    b.dt_ult_oc                                          AS DT_ULT_OC,
-    b.situacao_oc                                        AS SITUACAO_ULT_OC   -- A = aberta, F = fechada
+    ROUND(b.saldo_muda  * b.tch_muda, 3)                 AS TON_MUDA_ESTIMADA
 FROM (SELECT x.*,
              -- safra: estimada - OCs de safra (OC total = saldo zero)
              CASE WHEN x.fl_total = 1 THEN 0
