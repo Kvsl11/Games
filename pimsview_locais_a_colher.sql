@@ -37,9 +37,7 @@ colh_safra AS (             -- OC de safra emitidas (abertas e fechadas), total 
     SELECT d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3,
            SUM(d.qt_area)                                       AS area_colhida,
            MAX(CASE WHEN d.fg_parc_tot = 'T' THEN 1 ELSE 0 END) AS fl_total,
-           MAX(CASE WHEN d.fg_parc_tot = 'P' THEN 1 ELSE 0 END) AS fl_parcial,
-           MAX(h.dt_queima)                                     AS dt_ult_oc,
-           MIN(h.fg_situacao)                                   AS situacao_oc   -- 'A' se houver OC aberta
+           MAX(CASE WHEN d.fg_parc_tot = 'P' THEN 1 ELSE 0 END) AS fl_parcial
       FROM PIMS_CANA.QUEIMA_DE d
       JOIN PIMS_CANA.QUEIMA_HE h
         ON h.instancia = d.instancia
@@ -78,9 +76,7 @@ base AS (
            NVL(cm.area_colhida,0)                           AS area_colhida_muda,
            NVL(cs.fl_total,0)                               AS fl_total,
            NVL(cm.fl_total,0)                               AS fl_total_muda,
-           NVL(cs.fl_parcial,0)                             AS fl_parcial,
-           cs.dt_ult_oc,
-           cs.situacao_oc
+           NVL(cs.fl_parcial,0)                             AS fl_parcial
       FROM PIMS_CANA.UPNIVEL3 u3
       JOIN PIMS_CANA.UPNIVEL1 u1
         ON u1.cd_upnivel1 = u3.cd_upnivel1
@@ -157,5 +153,4 @@ LEFT JOIN PIMS_CANA.MODULOADM  ma ON TRIM(ma.cd_mod_adm) = TRIM(b.cd_mod_adm)
 LEFT JOIN PIMS_CANA.VARIEDADES va ON va.cd_varied   = b.cd_varied
 LEFT JOIN PIMS_CANA.ESTAGIOS   es ON es.cd_estagio  = b.cd_estagio
 WHERE (b.saldo_safra > 0 OR b.saldo_muda > 0)                            -- só locais com saldo a colher
---AND NVL(b.situacao_oc, '-') <> 'F'   -- OPCIONAL: tira talhões com OC fechada (inclusive parciais com saldo)
 ORDER BY b.cd_safra, b.cd_unid_ind, b.cd_upnivel1, b.cd_upnivel2, b.cd_upnivel3
