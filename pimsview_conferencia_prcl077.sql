@@ -58,10 +58,10 @@ base AS (
            es.cd_hist,
            NVL(es.dt_historico, em.dt_historico)            AS dt_historico,
            NVL(es.qt_idade, em.qt_idade)                    AS qt_idade,
-           es.qt_tch                                        AS tch_safra,
-           NVL(em.qt_tch, es.qt_tch)                        AS tch_muda,
+           NVL(es.qt_tch,0)                                 AS tch_safra,
+           NVL(em.qt_tch,0)                                 AS tch_muda,       -- só da estimativa de muda
            NVL(es.qt_area_prod,0)                           AS area_estimada,
-           NVL(em.qt_area_prod, NVL(u3.qt_area_muda,0))     AS area_muda_estimada,
+           NVL(em.qt_area_prod,0)                           AS area_muda_estimada,
            NVL(cs.area_colhida,0)                           AS area_colhida_safra,
            NVL(cm.area_colhida,0)                           AS area_colhida_muda,
            NVL(cs.fl_total,0)                               AS fl_total,
@@ -126,7 +126,7 @@ SELECT r.unidade_industrial,
             ROUND(NULLIF(b.qt_idade, 0) / 30, 1)                 AS IDADE_CANA_MESES,  -- idade 0 no PIMS = vazio
             b.distancia                                          AS DISTANCIA_KM,
             b.area_talhao                                        AS AREA_TALHAO,
-            b.area_estimada                                      AS AREA_ESTIMADA,
+            b.area_estimada                                      AS AREA_ESTIMADA_SAFRA,
             b.area_colhida_safra                                 AS AREA_COLHIDA_SAFRA,
             b.saldo_safra                                        AS AREA_A_COLHER,
             b.area_muda_estimada                                 AS AREA_MUDA_ESTIMADA,
@@ -139,7 +139,7 @@ SELECT r.unidade_industrial,
             DECODE(b.cd_hist, 'O', 'Estimativa', NULL, 'Estimativa Muda', 'Reestimativa ' || b.cd_hist)
                                                                  AS ORIGEM_ESTIMATIVA,
             b.dt_historico                                       AS DATA_ESTIMATIVA,
-            b.tch_safra                                          AS TCH_ESTIMADO,
+            b.tch_safra                                          AS TCH_ESTIMADO_SAFRA,
             ROUND(b.saldo_safra * b.tch_safra, 3)                AS TON_ESTIMADA,
             b.tch_muda                                           AS TCH_MUDA,
             ROUND(b.saldo_muda  * b.tch_muda, 3)                 AS TON_MUDA_ESTIMADA,
@@ -149,15 +149,16 @@ SELECT r.unidade_industrial,
                      -- safra: estimada - OCs de safra (OC total = saldo zero)
                      CASE WHEN x.fl_total = 1 THEN 0
                           ELSE GREATEST(x.area_estimada - x.area_colhida_safra, 0) END      AS saldo_safra,
-                     -- muda: estimativa de muda - OCs de muda (OC total = saldo zero)
-                     CASE WHEN x.fl_total_muda = 1 THEN 0
+                     -- muda: estimativa de muda - OCs de muda (OC total de safra ou de muda = saldo zero)
+                     CASE WHEN x.fl_total = 1 OR x.fl_total_muda = 1 THEN 0
                           ELSE GREATEST(x.area_muda_estimada - x.area_colhida_muda, 0) END AS saldo_muda
                 FROM base x) b
         LEFT JOIN PIMS_CANA.TIPOPROPRI tp ON tp.cd_tp_propr = b.cd_tp_propr
         LEFT JOIN PIMS_CANA.MODULOADM  ma ON TRIM(ma.cd_mod_adm) = TRIM(b.cd_mod_adm)
         LEFT JOIN PIMS_CANA.VARIEDADES va ON va.cd_varied   = b.cd_varied
         LEFT JOIN PIMS_CANA.ESTAGIOS   es ON es.cd_estagio  = b.cd_estagio
-        WHERE b.saldo_safra > 0 OR b.saldo_muda > 0                              -- só locais com saldo a colher
+        WHERE (b.saldo_safra > 0 OR b.saldo_muda > 0)                            -- só locais com saldo a colher
+        --AND NVL(b.situacao_oc, '-') <> 'F'   -- OPCIONAL: tira talhões com OC fechada (inclusive parciais com saldo)
        ) r
  WHERE r.area_a_colher > 0
  GROUP BY r.unidade_industrial, r.cod_safra
