@@ -134,7 +134,7 @@ SELECT
     b.saldo_muda                                         AS AREA_MUDA_A_COLHER,
     CASE WHEN b.fl_parcial = 1 THEN 'S' ELSE 'N' END     AS CORTE_PARCIAL,
     DECODE(b.cd_hist, 'O', 'Estimativa', NULL, 'Estimativa Muda', 'Reestimativa ' || b.cd_hist)
-                                                         AS ORIGEM_ESTIMATIVA,
+                                                         AS ORIGEM_ESTIMATIVA_SAFRA,
     b.dt_historico                                       AS DATA_ESTIMATIVA,
     b.tch_safra                                          AS TCH_ESTIMADO_SAFRA,
     ROUND(b.saldo_safra * b.tch_safra, 3)                AS TON_ESTIMADA,
