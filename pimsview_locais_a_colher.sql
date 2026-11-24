@@ -11,6 +11,7 @@
      - Colhido          = OCs emitidas (abertas 'A' ou fechadas 'F'), corte total 'T' ou parcial 'P'
                           -> OC total zera o saldo do talhão (safra e muda); OC parcial desconta a área
      - OC parcial fechada não encerra o talhão: o saldo continua, igual ao '*' do PRCL-077 (CORTE_PARCIAL = 'S')
+     - SITUACAO_ULT_OC: A = aberta, F = fechada (documento da OC; 'F' com saldo = corte parcial)
    ===================================================================== */
 WITH
 safra_atual AS (            -- safra vigente por instância (fallback: ano-safra abr..mar)
@@ -37,7 +38,9 @@ colh_safra AS (             -- OC de safra emitidas (abertas e fechadas), total 
     SELECT d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3,
            SUM(d.qt_area)                                       AS area_colhida,
            MAX(CASE WHEN d.fg_parc_tot = 'T' THEN 1 ELSE 0 END) AS fl_total,
-           MAX(CASE WHEN d.fg_parc_tot = 'P' THEN 1 ELSE 0 END) AS fl_parcial
+           MAX(CASE WHEN d.fg_parc_tot = 'P' THEN 1 ELSE 0 END) AS fl_parcial,
+           MAX(h.dt_queima)                                     AS dt_ult_oc,
+           MIN(h.fg_situacao)                                   AS situacao_oc   -- 'A' se houver OC aberta
       FROM PIMS_CANA.QUEIMA_DE d
       JOIN PIMS_CANA.QUEIMA_HE h
         ON h.instancia = d.instancia
@@ -76,7 +79,9 @@ base AS (
            NVL(cm.area_colhida,0)                           AS area_colhida_muda,
            NVL(cs.fl_total,0)                               AS fl_total,
            NVL(cm.fl_total,0)                               AS fl_total_muda,
-           NVL(cs.fl_parcial,0)                             AS fl_parcial
+           NVL(cs.fl_parcial,0)                             AS fl_parcial,
+           cs.dt_ult_oc,
+           cs.situacao_oc
       FROM PIMS_CANA.UPNIVEL3 u3
       JOIN PIMS_CANA.UPNIVEL1 u1
         ON u1.cd_upnivel1 = u3.cd_upnivel1
@@ -139,7 +144,9 @@ SELECT
     b.tch_safra                                          AS TCH_ESTIMADO_SAFRA,
     ROUND(b.saldo_safra * b.tch_safra, 3)                AS TON_ESTIMADA,
     b.tch_muda                                           AS TCH_MUDA,
-    ROUND(b.saldo_muda  * b.tch_muda, 3)                 AS TON_MUDA_ESTIMADA
+    ROUND(b.saldo_muda  * b.tch_muda, 3)                 AS TON_MUDA_ESTIMADA,
+    b.dt_ult_oc                                          AS DT_ULT_OC,
+    b.situacao_oc                                        AS SITUACAO_ULT_OC   -- A = aberta, F = fechada
 FROM (SELECT x.*,
              -- safra: estimada - OCs de safra (OC total = saldo zero)
              CASE WHEN x.fl_total = 1 THEN 0
