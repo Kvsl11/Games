@@ -8,9 +8,11 @@
      - Estimativa safra = HISTPREPRO CD_HIST 'O' (original) ou '1'..'9' (reestimativas), a mais recente
      - Estimativa muda  = HISTPREPRO CD_HIST 'S' (área e TCH da muda) - sem estimativa de muda = muda zerada
      - CD_HIST 'E'      = baixa gerada pela OC (não é estimativa)
-     - Colhido          = OCs emitidas (abertas 'A' ou fechadas 'F'), corte total 'T' ou parcial 'P'
-                          -> OC total zera o saldo do talhão (safra e muda); OC parcial desconta a área
-     - OC parcial fechada não encerra o talhão: o saldo continua, igual ao '*' do PRCL-077 (CORTE_PARCIAL = 'S')
+     - Colhido safra    = soma das baixas HISTPREPRO CD_HIST 'E' da safra (mesma regra do PRCL-077:
+                          inclui baixas geradas por OC e baixas lançadas sem OC)
+     - OC total (FG_PARC_TOT 'T') zera o saldo do talhão (safra e muda)
+     - Colhido muda     = OCs de muda (OCORTEMD), abertas e fechadas
+     - CORTE_PARCIAL 'S' = talhão já teve baixa e ainda tem saldo (igual ao '*' do PRCL-077)
      - SITUACAO_ULT_OC: A = aberta, F = fechada (documento da OC; 'F' com saldo = corte parcial)
    ===================================================================== */
 WITH
@@ -47,6 +49,13 @@ colh_safra AS (             -- OC de safra emitidas (abertas e fechadas), total 
        AND h.no_queima = d.no_queima
      GROUP BY d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3
 ),
+baixa_safra AS (            -- baixas de safra ('E'), com ou sem OC
+    SELECT h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3,
+           SUM(h.qt_area_prod) AS area_baixada
+      FROM PIMS_CANA.HISTPREPRO h
+     WHERE h.cd_hist = 'E'
+     GROUP BY h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3
+),
 colh_muda AS (              -- OC de muda emitidas (abertas e fechadas)
     SELECT d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3,
            SUM(d.qt_area)                                       AS area_colhida,
@@ -75,11 +84,10 @@ base AS (
            NVL(em.qt_tch,0)                                 AS tch_muda,       -- só da estimativa de muda
            NVL(es.qt_area_prod,0)                           AS area_estimada,
            NVL(em.qt_area_prod,0)                           AS area_muda_estimada,
-           NVL(cs.area_colhida,0)                           AS area_colhida_safra,
+           NVL(bx.area_baixada,0)                           AS area_colhida_safra,
            NVL(cm.area_colhida,0)                           AS area_colhida_muda,
            NVL(cs.fl_total,0)                               AS fl_total,
            NVL(cm.fl_total,0)                               AS fl_total_muda,
-           NVL(cs.fl_parcial,0)                             AS fl_parcial,
            cs.dt_ult_oc,
            cs.situacao_oc
       FROM PIMS_CANA.UPNIVEL3 u3
@@ -105,6 +113,11 @@ base AS (
        AND cs.cd_upnivel1 = u3.cd_upnivel1
        AND cs.cd_upnivel2 = u3.cd_upnivel2
        AND cs.cd_upnivel3 = u3.cd_upnivel3
+      LEFT JOIN baixa_safra bx
+        ON bx.cd_safra    = u3.cd_safra
+       AND bx.cd_upnivel1 = u3.cd_upnivel1
+       AND bx.cd_upnivel2 = u3.cd_upnivel2
+       AND bx.cd_upnivel3 = u3.cd_upnivel3
       LEFT JOIN colh_muda cm
         ON cm.cd_safra    = u3.cd_safra
        AND cm.cd_upnivel1 = u3.cd_upnivel1
@@ -137,7 +150,8 @@ SELECT
     b.area_muda_estimada                                 AS AREA_MUDA_ESTIMADA,
     b.area_colhida_muda                                  AS AREA_MUDA_COLHIDA,
     b.saldo_muda                                         AS AREA_MUDA_A_COLHER,
-    CASE WHEN b.fl_parcial = 1 THEN 'S' ELSE 'N' END     AS CORTE_PARCIAL,
+    CASE WHEN b.area_colhida_safra > 0 AND b.saldo_safra > 0
+         THEN 'S' ELSE 'N' END                           AS CORTE_PARCIAL,
     DECODE(b.cd_hist, 'O', 'Estimativa', NULL, 'Estimativa Muda', 'Reestimativa ' || b.cd_hist)
                                                          AS ORIGEM_ESTIMATIVA_SAFRA,
     b.dt_historico                                       AS DATA_ESTIMATIVA,
@@ -148,7 +162,7 @@ SELECT
     b.dt_ult_oc                                          AS DT_ULT_OC,
     b.situacao_oc                                        AS SITUACAO_ULT_OC   -- A = aberta, F = fechada
 FROM (SELECT x.*,
-             -- safra: estimada - OCs de safra (OC total = saldo zero)
+             -- safra: estimada - baixas 'E' (OC total = saldo zero)
              CASE WHEN x.fl_total = 1 THEN 0
                   ELSE GREATEST(x.area_estimada - x.area_colhida_safra, 0) END      AS saldo_safra,
              -- muda: estimativa de muda - OCs de muda (OC total de safra ou de muda = saldo zero)

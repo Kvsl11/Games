@@ -1,5 +1,5 @@
-/* CONFERÊNCIA x PRCL-077 - totais por unidade industrial (empresa) e safra (somente parte de SAFRA)
-   Esperado unidade 20 (Ivinhema): 1.916 talhões | 30.835,41 ha | 2.609.598,051 t */
+/* CONFERÊNCIA x PRCL-077 - totais por unidade industrial e safra (parte de SAFRA)
+   PRCL-077 25/11/2026 (todas as unidades): 6.782 talhões | 86.591,70 ha | 6.749.255,951 t */
 WITH
 safra_atual AS (            -- safra vigente por instância (fallback: ano-safra abr..mar)
     SELECT u1.instancia,
@@ -34,6 +34,13 @@ colh_safra AS (             -- OC de safra emitidas (abertas e fechadas), total 
        AND h.no_queima = d.no_queima
      GROUP BY d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3
 ),
+baixa_safra AS (            -- baixas de safra ('E'), com ou sem OC
+    SELECT h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3,
+           SUM(h.qt_area_prod) AS area_baixada
+      FROM PIMS_CANA.HISTPREPRO h
+     WHERE h.cd_hist = 'E'
+     GROUP BY h.cd_safra, h.cd_upnivel1, h.cd_upnivel2, h.cd_upnivel3
+),
 colh_muda AS (              -- OC de muda emitidas (abertas e fechadas)
     SELECT d.cd_safra, d.cd_upnivel1, d.cd_upnivel2, d.cd_upnivel3,
            SUM(d.qt_area)                                       AS area_colhida,
@@ -62,11 +69,10 @@ base AS (
            NVL(em.qt_tch,0)                                 AS tch_muda,       -- só da estimativa de muda
            NVL(es.qt_area_prod,0)                           AS area_estimada,
            NVL(em.qt_area_prod,0)                           AS area_muda_estimada,
-           NVL(cs.area_colhida,0)                           AS area_colhida_safra,
+           NVL(bx.area_baixada,0)                           AS area_colhida_safra,
            NVL(cm.area_colhida,0)                           AS area_colhida_muda,
            NVL(cs.fl_total,0)                               AS fl_total,
            NVL(cm.fl_total,0)                               AS fl_total_muda,
-           NVL(cs.fl_parcial,0)                             AS fl_parcial,
            cs.dt_ult_oc,
            cs.situacao_oc
       FROM PIMS_CANA.UPNIVEL3 u3
@@ -92,6 +98,11 @@ base AS (
        AND cs.cd_upnivel1 = u3.cd_upnivel1
        AND cs.cd_upnivel2 = u3.cd_upnivel2
        AND cs.cd_upnivel3 = u3.cd_upnivel3
+      LEFT JOIN baixa_safra bx
+        ON bx.cd_safra    = u3.cd_safra
+       AND bx.cd_upnivel1 = u3.cd_upnivel1
+       AND bx.cd_upnivel2 = u3.cd_upnivel2
+       AND bx.cd_upnivel3 = u3.cd_upnivel3
       LEFT JOIN colh_muda cm
         ON cm.cd_safra    = u3.cd_safra
        AND cm.cd_upnivel1 = u3.cd_upnivel1
@@ -132,7 +143,8 @@ SELECT r.unidade_industrial,
             b.area_muda_estimada                                 AS AREA_MUDA_ESTIMADA,
             b.area_colhida_muda                                  AS AREA_MUDA_COLHIDA,
             b.saldo_muda                                         AS AREA_MUDA_A_COLHER,
-            CASE WHEN b.fl_parcial = 1 THEN 'S' ELSE 'N' END     AS CORTE_PARCIAL,
+            CASE WHEN b.area_colhida_safra > 0 AND b.saldo_safra > 0
+                 THEN 'S' ELSE 'N' END                           AS CORTE_PARCIAL,
             DECODE(b.cd_hist, 'O', 'Estimativa', NULL, 'Estimativa Muda', 'Reestimativa ' || b.cd_hist)
                                                                  AS ORIGEM_ESTIMATIVA_SAFRA,
             b.dt_historico                                       AS DATA_ESTIMATIVA,
@@ -143,7 +155,7 @@ SELECT r.unidade_industrial,
             b.dt_ult_oc                                          AS DT_ULT_OC,
             b.situacao_oc                                        AS SITUACAO_ULT_OC   -- A = aberta, F = fechada
         FROM (SELECT x.*,
-                     -- safra: estimada - OCs de safra (OC total = saldo zero)
+                     -- safra: estimada - baixas 'E' (OC total = saldo zero)
                      CASE WHEN x.fl_total = 1 THEN 0
                           ELSE GREATEST(x.area_estimada - x.area_colhida_safra, 0) END      AS saldo_safra,
                      -- muda: estimativa de muda - OCs de muda (OC total de safra ou de muda = saldo zero)
@@ -157,5 +169,5 @@ SELECT r.unidade_industrial,
         WHERE (b.saldo_safra > 0 OR b.saldo_muda > 0)                            -- só locais com saldo a colher
        ) r
  WHERE r.area_a_colher > 0
- GROUP BY r.unidade_industrial, r.cod_safra
+ GROUP BY ROLLUP(r.unidade_industrial, r.cod_safra)
  ORDER BY r.unidade_industrial, r.cod_safra
