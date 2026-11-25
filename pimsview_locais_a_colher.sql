@@ -4,10 +4,10 @@
    Traz a safra vigente e a seguinte (tombo / virada de safra): filtrar por COD_SAFRA.
    Para comparar com o PRCL-077 filtrar por UNIDADE_INDUSTRIAL (uma instância pode ter mais de uma empresa).
 
-   Regras (validadas contra PRCL-077 Caarapó e Ivinhema - dif. < 0,01%):
+   Regras (validadas contra PRCL-077 de 25/11/2026: 6.782 talhões / 86.591,70 ha - 100% iguais):
      - Estimativa safra = HISTPREPRO CD_HIST 'O' (original) ou '1'..'9' (reestimativas), a mais recente
      - Estimativa muda  = HISTPREPRO CD_HIST 'S' (área e TCH da muda) - sem estimativa de muda = muda zerada
-     - CD_HIST 'E'      = baixa gerada pela OC (não é estimativa)
+     - CD_HIST 'E'      = baixa do local (gerada pela OC ou lançada direto) - não é estimativa
      - Colhido safra    = soma das baixas HISTPREPRO CD_HIST 'E' da safra (mesma regra do PRCL-077:
                           inclui baixas geradas por OC e baixas lançadas sem OC)
      - OC total (FG_PARC_TOT 'T') zera o saldo do talhão (safra e muda)
