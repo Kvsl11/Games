@@ -26,10 +26,10 @@ SELECT codigo, descricao FROM (
 SELECT codigo, descricao FROM (
     SELECT '%' AS codigo, 'TODAS' AS descricao, 0 AS ordem, 0 AS cod_num FROM dual
     UNION ALL
-    SELECT DISTINCT TO_CHAR(u3.cd_unid_ind), 'UNIDADE ' || u3.cd_unid_ind, 1, u3.cd_unid_ind
-      FROM PIMS_CANA.UPNIVEL3 u3
-     WHERE u3.cd_unid_ind IS NOT NULL
-       AND u3.cd_safra >= EXTRACT(YEAR FROM SYSDATE) - 1
+    SELECT '10', '10 - MONTE ALEGRE', 1, 10 FROM dual UNION ALL
+    SELECT '20', '20 - ANGÉLICA',     1, 20 FROM dual UNION ALL
+    SELECT '23', '23 - IVINHEMA',     1, 23 FROM dual UNION ALL
+    SELECT '44', '44 - CAARAPÓ',      1, 44 FROM dual
 ) ORDER BY ordem, cod_num, codigo;
 
 -- P_TP_PROPRIETARIO
