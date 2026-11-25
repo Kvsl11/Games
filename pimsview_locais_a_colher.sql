@@ -126,7 +126,6 @@ base AS (
      WHERE es.cd_hist IS NOT NULL OR em.cd_hist IS NOT NULL       -- talhão com estimativa
 )
 SELECT
-    b.instancia                                          AS INSTANCIA,
     b.cd_unid_ind                                        AS UNIDADE_INDUSTRIAL,
     b.cd_safra                                           AS COD_SAFRA,
     b.cd_tp_propr                                        AS COD_TP_PROPRIETARIO,
@@ -146,17 +145,18 @@ SELECT
     b.area_talhao                                        AS AREA_TALHAO,
     b.area_estimada                                      AS AREA_ESTIMADA_SAFRA,
     b.area_colhida_safra                                 AS AREA_COLHIDA_SAFRA,
-    b.saldo_safra                                        AS AREA_A_COLHER,
+    b.saldo_safra                                        AS AREA_A_COLHER_SAFRA,
     b.area_muda_estimada                                 AS AREA_MUDA_ESTIMADA,
     b.area_colhida_muda                                  AS AREA_MUDA_COLHIDA,
     b.saldo_muda                                         AS AREA_MUDA_A_COLHER,
+    b.saldo_safra + b.saldo_muda                         AS SALDO_A_COLHER_SAFRA_MUDA,
     CASE WHEN b.area_colhida_safra > 0 AND b.saldo_safra > 0
          THEN 'S' ELSE 'N' END                           AS CORTE_PARCIAL,
     DECODE(b.cd_hist, 'O', 'Estimativa', NULL, 'Estimativa Muda', 'Reestimativa ' || b.cd_hist)
                                                          AS ORIGEM_ESTIMATIVA_SAFRA,
     b.dt_historico                                       AS DATA_ESTIMATIVA,
     b.tch_safra                                          AS TCH_ESTIMADO_SAFRA,
-    ROUND(b.saldo_safra * b.tch_safra, 3)                AS TON_ESTIMADA,
+    ROUND(b.saldo_safra * b.tch_safra, 3)                AS TON_ESTIMADA_SAFRA,
     b.tch_muda                                           AS TCH_MUDA,
     ROUND(b.saldo_muda  * b.tch_muda, 3)                 AS TON_MUDA_ESTIMADA,
     b.dt_ult_oc                                          AS DT_ULT_OC,
