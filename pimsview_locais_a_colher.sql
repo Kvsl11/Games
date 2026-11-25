@@ -1,8 +1,8 @@
 /* =====================================================================
    PIMS VIEW - LOCAIS A COLHER  (réplica PRCL-077 + área de MUDA)
    Somente SELECT - owner PIMS_CANA - Oracle
-   Traz a safra vigente e a seguinte (tombo / virada de safra): filtrar por SAFRA.
-   Para comparar com o PRCL-077 filtrar por UNID_IND (uma instância pode ter mais de uma empresa).
+   Traz a safra vigente e a seguinte (tombo / virada de safra): filtrar por COD_SAFRA.
+   Para comparar com o PRCL-077 filtrar por UNIDADE_INDUSTRIAL (uma instância pode ter mais de uma empresa).
 
    Regras (validadas contra PRCL-077 de 25/11/2026: 6.782 talhões / 86.591,70 ha - 100% iguais):
      - Estimativa safra = HISTPREPRO CD_HIST 'O' (original) ou '1'..'9' (reestimativas), a mais recente
@@ -12,8 +12,8 @@
                           inclui baixas geradas por OC e baixas lançadas sem OC)
      - OC total (FG_PARC_TOT 'T') zera o saldo do talhão (safra e muda)
      - Colhido muda     = OCs de muda (OCORTEMD), abertas e fechadas
-     - CORTE_PARC 'S' = talhão já teve baixa e ainda tem saldo (igual ao '*' do PRCL-077)
-     - SIT_ULT_OC: A = aberta, F = fechada (documento da OC; 'F' com saldo = corte parcial)
+     - CORTE_PARCIAL 'S' = talhão já teve baixa e ainda tem saldo (igual ao '*' do PRCL-077)
+     - SITUACAO_ULT_OC: A = aberta, F = fechada (documento da OC; 'F' com saldo = corte parcial)
    ===================================================================== */
 WITH
 safra_atual AS (            -- safra vigente por instância (fallback: ano-safra abr..mar)
@@ -126,41 +126,41 @@ base AS (
      WHERE es.cd_hist IS NOT NULL OR em.cd_hist IS NOT NULL       -- talhão com estimativa
 )
 SELECT
-    b.cd_unid_ind                                        AS UNID_IND,
-    b.cd_safra                                           AS SAFRA,
-    b.cd_tp_propr                                        AS COD_TP_PROP,
-    tp.de_tp_propr                                       AS TP_PROP,
+    b.cd_unid_ind                                        AS UNIDADE_INDUSTRIAL,
+    b.cd_safra                                           AS COD_SAFRA,
+    b.cd_tp_propr                                        AS COD_TP_PROPRIETARIO,
+    tp.de_tp_propr                                       AS DSC_TP_PROPRIETARIO,
     TRIM(b.cd_mod_adm)                                   AS COD_MOD_ADM,
-    NVL(ma.de_mod_adm, ma.da_mod_adm)                    AS MOD_ADM,
-    TRIM(b.cd_upnivel1)                                  AS COD_FAZ,
-    b.de_upnivel1                                        AS FAZENDA,
-    TRIM(b.cd_upnivel2)                                  AS GLEBA,
-    TRIM(b.cd_upnivel3)                                  AS TALHAO,
-    b.cd_varied                                          AS COD_VAR,
-    va.de_varied                                         AS VARIEDADE,
-    b.cd_estagio                                         AS COD_EST,
-    es.de_estagio                                        AS ESTAGIO,
-    ROUND(NULLIF(b.qt_idade, 0) / 30, 1)                 AS IDADE_MESES,  -- idade 0 no PIMS = vazio
-    b.distancia                                          AS DIST_KM,
+    NVL(ma.de_mod_adm, ma.da_mod_adm)                    AS DSC_MOD_ADM,
+    TRIM(b.cd_upnivel1)                                  AS COD_FAZENDA,
+    b.de_upnivel1                                        AS DSC_FAZENDA,
+    TRIM(b.cd_upnivel2)                                  AS COD_GLEBA,
+    TRIM(b.cd_upnivel3)                                  AS COD_TALHAO,
+    b.cd_varied                                          AS COD_VARIEDADE,
+    va.de_varied                                         AS DSC_VARIEDADE,
+    b.cd_estagio                                         AS COD_ESTAGIO,
+    es.de_estagio                                        AS DSC_ESTAGIO,
+    ROUND(NULLIF(b.qt_idade, 0) / 30, 1)                 AS IDADE_CANA_MESES,  -- idade 0 no PIMS = vazio
+    b.distancia                                          AS DISTANCIA_KM,
     b.area_talhao                                        AS AREA_TALHAO,
-    b.area_estimada                                      AS AREA_EST_SAFRA,
-    b.area_colhida_safra                                 AS AREA_COLH_SAFRA,
-    b.saldo_safra                                        AS SALDO_SAFRA,
-    b.area_muda_estimada                                 AS AREA_EST_MUDA,
-    b.area_colhida_muda                                  AS AREA_COLH_MUDA,
-    b.saldo_muda                                         AS SALDO_MUDA,
-    b.saldo_safra + b.saldo_muda                         AS SALDO_SAFRA_MUDA,
+    b.area_estimada                                      AS AREA_ESTIMADA_SAFRA,
+    b.area_colhida_safra                                 AS AREA_COLHIDA_SAFRA,
+    b.saldo_safra                                        AS AREA_A_COLHER_SAFRA,
+    b.area_muda_estimada                                 AS AREA_MUDA_ESTIMADA,
+    b.area_colhida_muda                                  AS AREA_MUDA_COLHIDA,
+    b.saldo_muda                                         AS AREA_MUDA_A_COLHER,
+    b.saldo_safra + b.saldo_muda                         AS SALDO_A_COLHER_SAFRA_MUDA,
     CASE WHEN b.area_colhida_safra > 0 AND b.saldo_safra > 0
-         THEN 'S' ELSE 'N' END                           AS CORTE_PARC,
+         THEN 'S' ELSE 'N' END                           AS CORTE_PARCIAL,
     DECODE(b.cd_hist, 'O', 'Estimativa', NULL, 'Estimativa Muda', 'Reestimativa ' || b.cd_hist)
-                                                         AS ORIGEM_EST_SAFRA,
-    b.dt_historico                                       AS DT_ESTIMATIVA,
-    b.tch_safra                                          AS TCH_SAFRA,
-    ROUND(b.saldo_safra * b.tch_safra, 3)                AS TON_SAFRA,
+                                                         AS ORIGEM_ESTIMATIVA_SAFRA,
+    b.dt_historico                                       AS DATA_ESTIMATIVA,
+    b.tch_safra                                          AS TCH_ESTIMADO_SAFRA,
+    ROUND(b.saldo_safra * b.tch_safra, 3)                AS TON_ESTIMADA_SAFRA,
     b.tch_muda                                           AS TCH_MUDA,
-    ROUND(b.saldo_muda  * b.tch_muda, 3)                 AS TON_MUDA,
+    ROUND(b.saldo_muda  * b.tch_muda, 3)                 AS TON_MUDA_ESTIMADA,
     b.dt_ult_oc                                          AS DT_ULT_OC,
-    b.situacao_oc                                        AS SIT_ULT_OC   -- A = aberta, F = fechada
+    b.situacao_oc                                        AS SITUACAO_ULT_OC   -- A = aberta, F = fechada
 FROM (SELECT x.*,
              -- safra: estimada - baixas 'E' (OC total = saldo zero)
              CASE WHEN x.fl_total = 1 THEN 0
