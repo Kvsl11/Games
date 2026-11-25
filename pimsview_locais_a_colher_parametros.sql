@@ -124,11 +124,11 @@ base AS (
        AND cm.cd_upnivel2 = u3.cd_upnivel2
        AND cm.cd_upnivel3 = u3.cd_upnivel3
      WHERE ( es.cd_hist IS NOT NULL OR em.cd_hist IS NOT NULL)   -- talhão com estimativa
-       -- filtros (deixe em branco / NULL para trazer todos)
-       AND (:P_UNIDADE_INDUSTRIAL IS NULL OR u3.cd_unid_ind        = :P_UNIDADE_INDUSTRIAL)
-       AND (:P_FAZENDA            IS NULL OR TRIM(u3.cd_upnivel1)  = TRIM(:P_FAZENDA))
-       AND (:P_GLEBA              IS NULL OR TRIM(u3.cd_upnivel2)  = TRIM(:P_GLEBA))
-       AND (:P_TP_PROPRIETARIO    IS NULL OR u3.cd_tp_propr        = :P_TP_PROPRIETARIO)
+       -- filtros: '%' (ou vazio) = todos
+       AND TO_CHAR(u3.cd_unid_ind)  LIKE NVL(TRIM(:P_UNIDADE_INDUSTRIAL), '%')
+       AND TRIM(u3.cd_upnivel1)     LIKE NVL(TRIM(:P_FAZENDA), '%')
+       AND TRIM(u3.cd_upnivel2)     LIKE NVL(TRIM(:P_GLEBA), '%')
+       AND TO_CHAR(u3.cd_tp_propr)  LIKE NVL(TRIM(:P_TP_PROPRIETARIO), '%')
 )
 SELECT
     b.cd_unid_ind                                        AS UNIDADE_INDUSTRIAL,
